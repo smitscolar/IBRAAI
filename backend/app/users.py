@@ -1,45 +1,66 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import User
 from app.schemas import UserCreate, UserLogin
 from app.auth import create_access_token
 
 router = APIRouter()
 
-fake_users = []
 
 @router.get("/users")
-def get_users():
-    return fake_users
+def get_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email
+        }
+        for user in users
+    ]
+
 
 @router.post("/register")
-def register(user: UserCreate):
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(
+        User.username == user.username
+    ).first()
 
-    new_user = {
-        "username": user.username,
-        "email": user.email,
-        "password": user.password
-    }
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Username already registered"
+        )
 
-    fake_users.append(new_user)
+    new_user = User(
+        username=user.username,
+        email=user.email,
+        password=user.password
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
 
     return {
         "message": "User registered successfully",
         "user": {
-            "username": user.username,
-            "email": user.email
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email
         }
     }
 
-@router.post("/login")
-def login(user: UserLogin):
 
-    found_user = next(
-        (
-            u for u in fake_users
-            if u["username"] == user.username
-            and u["password"] == user.password
-        ),
-        None
-    )
+@router.post("/login")
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    found_user = db.query(User).filter(
+        User.username == user.username,
+        User.password == user.password
+    ).first()
 
     if not found_user:
         raise HTTPException(
@@ -48,13 +69,14 @@ def login(user: UserLogin):
         )
 
     token = create_access_token({
-        "sub": user.username
+        "sub": found_user.username
     })
 
     return {
         "access_token": token,
         "token_type": "bearer"
     }
+
 
 @router.get("/users/profile")
 def profile():
