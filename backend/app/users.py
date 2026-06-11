@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserLogin
 from app.auth import create_access_token
+from app.security import hash_password, verify_password
 
 router = APIRouter()
 
@@ -38,7 +39,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     new_user = User(
         username=user.username,
         email=user.email,
-        password=user.password
+        password=hash_password(user.password)
     )
 
     db.add(new_user)
@@ -58,11 +59,19 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     found_user = db.query(User).filter(
-        User.username == user.username,
-        User.password == user.password
+        User.username == user.username
     ).first()
 
     if not found_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    if not verify_password(
+        user.password,
+        found_user.password
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
