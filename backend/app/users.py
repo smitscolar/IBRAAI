@@ -1,13 +1,15 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserLogin
-from app.auth import create_access_token
+from app.auth import create_access_token, verify_access_token
 from app.security import hash_password, verify_password
 
 router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
 @router.get("/users")
@@ -68,10 +70,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid username or password"
         )
 
-    if not verify_password(
-        user.password,
-        found_user.password
-    ):
+    if not verify_password(user.password, found_user.password):
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
@@ -88,8 +87,25 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.get("/users/profile")
-def profile():
+def profile(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    username = verify_access_token(token)
+
+    user = db.query(User).filter(
+        User.username == username
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
     return {
-        "username": "demo_user",
-        "role": "user"
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": "authenticated_user"
     }
