@@ -1,0 +1,78 @@
+name: IBRAAI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  repository-health:
+    name: Repository Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show repository structure
+        run: |
+          find . -maxdepth 3 -type f | sort
+
+      - name: Validate required starter files
+        run: |
+          test -f README.md
+          test -f backend/app/main.py
+          test -f frontend/src/pages/index.tsx
+          test -f mobile/lib/main.dart
+          test -f infra/docker/docker-compose.yml
+          test -d docs
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python syntax check
+        run: |
+          python -m py_compile backend/app/main.py
+
+      - name: Validate documentation modules
+        run: |
+          count=$(find docs -maxdepth 1 -name 'module_*.md' | wc -l)
+          echo "Documentation modules found: ${count}"
+          test "${count}" -ge 50
+
+      - name: Validate Docker Compose file presence
+        run: |
+          test -s infra/docker/docker-compose.yml
+
+  frontend-health:
+    name: Frontend Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check frontend starter file
+        run: |
+          test -f frontend/src/pages/index.tsx
+          sed -n '1,120p' frontend/src/pages/index.tsx
+
+      - name: Install and build frontend when package.json exists
+        working-directory: frontend
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm run build --if-present
+            npm test --if-present
+          else
+            echo "No frontend/package.json yet; skipping Node install/build."
+          fi
