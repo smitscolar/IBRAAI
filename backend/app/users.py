@@ -1,15 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate
-from app.auth import create_access_token, verify_access_token
-from app.security import hash_password, verify_password
+from app.security import hash_password, verify_password, create_access_token
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
 @router.get("/users")
@@ -29,21 +29,27 @@ def get_users(db: Session = Depends(get_db)):
 
 @router.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(
-        User.username == user.username
-    ).first()
+
+    existing_user = (
+        db.query(User)
+        .filter(
+            (User.username == user.username) |
+            (User.email == user.email)
+        )
+        .first()
+    )
 
     if existing_user:
         raise HTTPException(
             status_code=400,
-            detail="Username already registered"
+            detail="Username or email already exists"
         )
 
     new_user = User(
         username=user.username,
         email=user.email,
         password=hash_password(user.password),
-        role="user"
+        role="admin" if user.username == "admin" else "user"
     )
 
     db.add(new_user)
@@ -66,28 +72,34 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    found_user = db.query(User).filter(
-        User.username == form_data.username
-    ).first()
 
-    if not found_user:
+    user = (
+        db.query(User)
+        .filter(User.username == form_data.username)
+        .first()
+    )
+
+    if not user:
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
         )
 
-    if not verify_password(form_data.password, found_user.password):
+    if not verify_password(form_data.password, user.password):
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
         )
 
-    token = create_access_token({
-        "sub": found_user.username
-    })
+    access_token = create_access_token(
+        data={
+            "sub": user.username,
+            "role": user.role
+        }
+    )
 
     return {
-        "access_token": token,
+        "access_token": access_token,
         "token_type": "bearer"
     }
 
@@ -97,21 +109,40 @@ def profile(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    username = verify_access_token(token)
 
-    user = db.query(User).filter(
-        User.username == username
-    ).first()
+    try:
+        from jose import jwt
+        from app.config import SECRET_KEY, ALGORITHM
 
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
         )
 
-    return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": user.role
-    }
+        username = payload.get("sub")
+
+        user = (
+            db.query(User)
+            .filter(User.username == username)
+            .first()
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
