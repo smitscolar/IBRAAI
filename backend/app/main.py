@@ -1,15 +1,9 @@
 from fastapi import FastAPI
 
 from app.database import Base, engine
-
 from app.users import router as users_router
-
-# Import projects router jika file projects.py ada
-try:
-    from app.projects import router as projects_router
-    HAS_PROJECTS = True
-except:
-    HAS_PROJECTS = False
+from app.projects import router as projects_router
+from app.dashboard import router as dashboard_router
 
 
 # Create database tables
@@ -26,8 +20,10 @@ app = FastAPI(
 app.include_router(users_router)
 
 # Projects routes
-if HAS_PROJECTS:
-    app.include_router(projects_router)
+app.include_router(projects_router)
+
+# Dashboard routes
+app.include_router(dashboard_router)
 
 
 @app.get("/")
