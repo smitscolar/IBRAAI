@@ -7,6 +7,7 @@ from app.projects import router as projects_router
 from app.dashboard import router as dashboard_router
 from app.uploads import router as uploads_router
 from app.analyze import router as analyze_router
+from app.ai_summary import router as ai_summary_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -17,12 +18,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Routers
+# Register routers
 app.include_router(users_router)
 app.include_router(projects_router)
 app.include_router(dashboard_router)
 app.include_router(uploads_router)
 app.include_router(analyze_router)
+app.include_router(ai_summary_router)
 
 
 @app.get("/")
