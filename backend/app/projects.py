@@ -8,6 +8,7 @@ from app.schemas import ProjectCreate
 router = APIRouter()
 
 
+# CREATE PROJECT
 @router.post("/projects")
 def create_project(
     project: ProjectCreate,
@@ -25,6 +26,7 @@ def create_project(
     return new_project
 
 
+# GET ALL PROJECTS
 @router.get("/projects")
 def get_projects(
     db: Session = Depends(get_db)
@@ -32,6 +34,7 @@ def get_projects(
     return db.query(Project).all()
 
 
+# GET PROJECT BY ID
 @router.get("/projects/{project_id}")
 def get_project(
     project_id: int,
@@ -50,6 +53,36 @@ def get_project(
     return project
 
 
+# UPDATE PROJECT
+@router.put("/projects/{project_id}")
+def update_project(
+    project_id: int,
+    project: ProjectCreate,
+    db: Session = Depends(get_db)
+):
+    existing_project = db.query(Project).filter(
+        Project.id == project_id
+    ).first()
+
+    if not existing_project:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    existing_project.title = project.title
+    existing_project.description = project.description
+
+    db.commit()
+    db.refresh(existing_project)
+
+    return {
+        "message": "Project updated successfully",
+        "project": existing_project
+    }
+
+
+# DELETE PROJECT
 @router.delete("/projects/{project_id}")
 def delete_project(
     project_id: int,
