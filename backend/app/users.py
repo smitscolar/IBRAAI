@@ -6,15 +6,49 @@ from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate
 from app.security import hash_password, verify_password
-from app.auth import create_access_token
+from app.auth import create_access_token, verify_access_token
 
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    username = verify_access_token(token)
+
+    user = db.query(User).filter(
+        User.username == username
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    return user
+
+
+def admin_required(
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required"
+        )
+
+    return current_user
+
+
 @router.get("/users")
-def get_users(db: Session = Depends(get_db)):
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
     users = db.query(User).all()
 
     return [
@@ -101,41 +135,11 @@ def login(
 
 @router.get("/users/profile")
 def profile(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
-
-    try:
-        from jose import jwt
-        from app.config import SECRET_KEY, ALGORITHM
-
-        payload = jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM]
-        )
-
-        username = payload.get("sub")
-
-        user = db.query(User).filter(
-            User.username == username
-        ).first()
-
-        if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
-
-        return {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "role": user.role
-        }
-
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "role": current_user.role
+    }
