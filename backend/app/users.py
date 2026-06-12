@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate
-from app.security import hash_password, verify_password, create_access_token
+from app.security import hash_password, verify_password
+from app.auth import create_access_token
 
 router = APIRouter()
 
@@ -30,14 +31,10 @@ def get_users(db: Session = Depends(get_db)):
 @router.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
 
-    existing_user = (
-        db.query(User)
-        .filter(
-            (User.username == user.username) |
-            (User.email == user.email)
-        )
-        .first()
-    )
+    existing_user = db.query(User).filter(
+        (User.username == user.username) |
+        (User.email == user.email)
+    ).first()
 
     if existing_user:
         raise HTTPException(
@@ -73,11 +70,9 @@ def login(
     db: Session = Depends(get_db)
 ):
 
-    user = (
-        db.query(User)
-        .filter(User.username == form_data.username)
-        .first()
-    )
+    user = db.query(User).filter(
+        User.username == form_data.username
+    ).first()
 
     if not user:
         raise HTTPException(
@@ -122,11 +117,9 @@ def profile(
 
         username = payload.get("sub")
 
-        user = (
-            db.query(User)
-            .filter(User.username == username)
-            .first()
-        )
+        user = db.query(User).filter(
+            User.username == username
+        ).first()
 
         if not user:
             raise HTTPException(
